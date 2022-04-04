@@ -52,11 +52,15 @@ convert_to_int64(PyObject **v, int64_t *val)
 static PyObject *
 pyint64_subtype_new(PyTypeObject *type, PyObject *x);
 
-static PyObject*
-pyint64_new_impl(PyTypeObject *type, PyObject *x);
+// static PyObject*
+// pyint64_new_impl(PyTypeObject *type, PyObject *x);
 
-static PyObject *
-pyint64_new(PyTypeObject *subtype, PyObject *args, PyObject *kwargs);
+// static PyObject *
+// pyint64_new(PyTypeObject *subtype, PyObject *args, PyObject *kwargs);
+
+// Constuctor
+static int
+pyint64__init__(PyInt64Object *self, PyObject *args, PyObject *kwds);
 
 static PyObject *
 pyint64_repr(PyInt64Object *v);
@@ -91,7 +95,7 @@ static PyObject*
 pyint64_divmod(PyObject *left, PyObject *right);
 
 static PyObject*
-pyint64_pow(PyObject *v, PyObject *w, PyObject *x);
+pyint64_power(PyObject *v, PyObject *w, PyObject *x);
 
 static PyObject*
 pyint64_negative(PyObject *v);
@@ -128,6 +132,9 @@ pyint64_int(PyObject *v);
 
 static PyObject*
 pyint64_float(PyObject *v);
+
+static PyObject*
+pyint64__str__(PyObject *self);
 
 // END Number operations
 
@@ -174,7 +181,7 @@ PyNumberMethods pyint64_as_number = {
     .nb_multiply = pyint64_mul,
     .nb_remainder = pyint64_remainder,
     .nb_divmod = pyint64_divmod,
-    .nb_power = pyint64_pow,
+    .nb_power = pyint64_power,
     .nb_negative = (unaryfunc)pyint64_negative,
     .nb_positive = pyint64_positive,
     .nb_absolute = pyint64_absolute,
@@ -210,6 +217,7 @@ PyTypeObject PyInt64_Type =
     .tp_basicsize = sizeof(PyInt64Object),
     .tp_doc = "Python Int64 object",
     .tp_dealloc = (destructor)pyint64_dealloc,
+    .tp_str = pyint64__str__,
     .tp_repr = (reprfunc)pyint64_repr,
     .tp_as_number = &pyint64_as_number,
     .tp_hash = (hashfunc)pyint64_hash,
@@ -218,7 +226,8 @@ PyTypeObject PyInt64_Type =
     .tp_richcompare = pyint64_richcompare,
     .tp_methods = pyint64_methods,
     .tp_getset = pyint64_getset,
-    .tp_new = pyint64_new,
+    .tp_init = (initproc)pyint64__init__,
+    .tp_new = PyType_GenericNew,
 };
 
 int64_t PyInt64_AsInt64(PyObject* object)
@@ -231,7 +240,7 @@ int64_t PyInt64_AsInt64(PyObject* object)
 
     if (PyInt64_Check(object))
     {
-        return ((PyInt64Object*)object)->ob_int64val;
+        return PyInt64_GetValue(object);
     }
 
     PyLongObject* value = (PyLongObject *)PyNumber_Index(object);
@@ -315,68 +324,83 @@ PyObject* PyInt64_FromString(PyObject* string)
     return PyInt64_FromInt64(value);
 }
 
-static PyObject *
-pyint64_new(PyTypeObject *subtype, PyObject *args, PyObject *kwargs)
+static int
+pyint64_parseUnicode(PyInt64Object *self, PyObject *arg)
 {
-    if (PyTuple_GET_SIZE(args) > 1)
-    {
-        PyErr_SetString(&PyErr_BadArgument, "Arguments more than 1.");
-        return NULL;
-    }
-
-    PyObject* ret = NULL;
-    PyObject* tuple_item = NULL;
-    
-    if (PyTuple_GET_SIZE(args) == 1)
-    {
-        // Get first item.
-        tuple_item = PyTuple_GET_ITEM(args, 0);
-    }    
-
-    return pyint64_new_impl(subtype, tuple_item);
+    return 0;
 }
 
-static PyObject *
-pyint64_subtype_new(PyTypeObject *type, PyObject *x)
+static int
+pyint64__init__impl__(PyInt64Object *self, PyObject *arg)
 {
-    PyObject* newObj = type->tp_alloc(type, 0);
-    PyObject* temp = pyint64_new_impl(&PyInt64_Type, x);
-    
-    if (!newObj)
+    if (!arg)
     {
-        Py_DECREF(temp);
-        return NULL;
+        self->ob_int64val = 0;
+        return 0;
     }
 
-    ((PyInt64Object*) newObj)->ob_int64val = ((PyInt64Object*) temp)->ob_int64val;
-    Py_DECREF(temp);
-    return newObj;
-}
-
-static PyObject*
-pyint64_new_impl(PyTypeObject *type, PyObject *input)
-{
-    if (type != &PyInt64_Type)
+    if (PyUnicode_Check(arg))
     {
-        if (!input)
+         if (!Py_IsTrue(PyObject_CallMethod(arg, "isdigit", NULL)))
         {
-            input = PyLong_FromLongLong(0);
+            PyErr_Format(PyExc_ValueError, 
+                "The str value must be digit, not '%.200S'",
+                arg);
+            return -1;
         }
 
-        return pyint64_subtype_new(type, input);
+        return pyint64_parseUnicode(self, arg);
     }
 
-    if (!input)
+    if (PyLong_Check(arg))
     {
-        return PyInt64_FromInt64(0);
+        const int64_t value = PyLong_AsLongLong(arg);
+        if (value == -1 && PyErr_Occurred())
+        {
+            return -1;
+        }
+
+        self->ob_int64val = value;
+        return 0;
     }
 
-    if (PyUnicode_Check(input))
+    if (PyFloat_Check(arg))
     {
-        return PyInt64_FromString(input);
+        const double value = PyFloat_AsDouble(arg);
+        if (value == -1.0 && PyErr_Occurred())
+        {
+            return -1;
+        }
+
+        self->ob_int64val = (int64_t)value;
+        return 0;
     }
 
-    return PyInt64_FromPyInt64(input);
+    PyErr_Format(PyExc_TypeError, "The type %s is not support by PyInt64.", Py_TYPE(arg)->tp_name);
+    return -1;
+}
+
+static int
+pyint64__init__(PyInt64Object *self, PyObject *args, PyObject *kwds)
+{
+    const auto size = PyTuple_Size(args);
+    PyObject* arg1 = NULL;
+
+    if (size > 1)
+    {
+        PyErr_Format(PyExc_TypeError, 
+            "Pyint64() takes at most 1 arguments (%zd given)", 
+            size
+        );
+
+        return -1;
+    }
+    else if (size == 1)
+    {
+        arg1 = PyTuple_GET_ITEM(args, 0);
+    }
+   
+    return pyint64__init__impl__(self, arg1);
 }
 
 static void
@@ -385,16 +409,19 @@ pyint64_dealloc(PyInt64Object *obj)
     Py_TYPE(obj)->tp_free((PyObject*)obj);
 }
 
-static PyObject *
-pyint64_repr(PyInt64Object *v)
+static PyObject*
+pyint64_repr(PyInt64Object *self)
+{
+   return pyint64__str__((PyObject*)self);
+}
+
+static PyObject*
+pyint64__str__(PyObject* self)
 {
     char buffer[21];
-    
-    int64_t value = PyInt64_GetValue(v);
+    const int64_t value = PyInt64_GetValue(self);
     char* bufferEnd = buffer + 21;
-    char* next = bufferEnd;
-
-    const uint64_t uvalue = (uint64_t)(value);
+    char* next = signedToString(value, buffer);
 
     PyObject* result = PyUnicode_FromStringAndSize(next, bufferEnd - next);
     if (!result)
@@ -526,7 +553,7 @@ pyint64_pow_impl(const int64_t src, const int64_t n)
 }
 
 static PyObject*
-pyint64_pow(PyObject *v, PyObject *w, PyObject *x)
+pyint64_power(PyObject *v, PyObject *w, PyObject *x)
 {
     int64_t a;
     int64_t b;
@@ -629,7 +656,7 @@ pyint64_lshift(PyObject *left, PyObject *right)
 
     if (b < 0) 
     {
-        PyErr_SetString(PyExc_ValueError, "negative shift count");
+        PyErr_SetString(PyExc_ValueError, "Negative shift count");
         return NULL;
     }
 
@@ -651,7 +678,7 @@ pyint64_rshift(PyObject *left, PyObject *right)
 
     if (b < 0) 
     {
-        PyErr_SetString(PyExc_ValueError, "negative shift count");
+        PyErr_SetString(PyExc_ValueError, "Negative shift count");
         return NULL;
     }
 
@@ -699,13 +726,13 @@ pyint64_or(PyObject *left, PyObject *right)
 static PyObject*
 pyint64_int(PyObject *v)
 {
-    return PyLong_FromLongLong(((PyInt64Object*)v)->ob_int64val);
+    return PyLong_FromLongLong(PyInt64_GetValue(v));
 }
 
 static PyObject*
 pyint64_float(PyObject *v)
 {
-    return PyFloat_FromDouble((double)((PyInt64Object*)v)->ob_int64val);
+    return PyFloat_FromDouble((double)PyInt64_GetValue(v));
 }
 
 /* Pyint64 Number Methods End */

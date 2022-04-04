@@ -29,7 +29,7 @@ PyObject* PyInt64_FromPyInt64(PyObject*);
 // Public Macros
 #define PyInt64_Check(ob) (PyObject_TypeCheck(ob, &PyInt64_Type))
 #define PyInt64_CheckExact(ob) (Py_IS_TYPE(ob, &PyInt64_Type))
-#define PyInt64_GetValue(ob) (ob->ob_int64val)
+#define PyInt64_GetValue(ob) (((PyInt64Object*)ob)->ob_int64val)
 
 #ifdef __cplusplus
 }
