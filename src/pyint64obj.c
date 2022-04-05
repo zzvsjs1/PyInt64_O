@@ -39,6 +39,17 @@ convert_to_int64(PyObject **v, int64_t *val)
             return -1;
         }
     }
+    else if (PyFloat_Check(obj))
+    {
+        const double d_value = PyFloat_AsDouble(obj);
+        if (d_value == -1.0 && PyErr_Occurred())
+        {
+            *v = NULL;
+            return -1;
+        }
+
+        *val = (int64_t)d_value;
+    }
     else
     {
         Py_INCREF(Py_NotImplemented);
@@ -128,6 +139,12 @@ static PyObject*
 pyint64_or(PyObject *left, PyObject *right);
 
 static PyObject*
+pyint64_floor_divide(PyObject *left, PyObject *right);
+
+static PyObject*
+pyint64_true_divide(PyObject *left, PyObject *right);
+
+static PyObject*
 pyint64_int(PyObject *v);
 
 static PyObject*
@@ -142,7 +159,7 @@ static PyModuleDef pyint64_module =
 {
     PyModuleDef_HEAD_INIT,
     .m_name = "pyint64",
-    .m_doc = "A int64 object.",
+    .m_doc = "A int64 object module.",
     .m_size = -1,
 };
 
@@ -181,7 +198,7 @@ PyNumberMethods pyint64_as_number = {
     .nb_multiply = pyint64_mul,
     .nb_remainder = pyint64_remainder,
     .nb_divmod = pyint64_divmod,
-    .nb_power = pyint64_power,
+    .nb_power = (ternaryfunc)pyint64_power,
     .nb_negative = (unaryfunc)pyint64_negative,
     .nb_positive = pyint64_positive,
     .nb_absolute = pyint64_absolute,
@@ -192,6 +209,8 @@ PyNumberMethods pyint64_as_number = {
     .nb_and = pyint64_and,
     .nb_xor = pyint64_xor,
     .nb_or = pyint64_or,
+    .nb_floor_divide = pyint64_floor_divide,
+    .nb_true_divide = pyint64_true_divide,
     .nb_int = pyint64_int,
     .nb_float = pyint64_float,
 };
@@ -298,7 +317,7 @@ PyObject* PyInt64_FromString(PyObject* string)
         return NULL;
     }
 
-    // Call is digit
+    // Call is str.digit
     if (!Py_IsTrue(PyObject_CallMethod(string, "isdigit", NULL)))
     {
         PyErr_Format(PyExc_ValueError, 
@@ -345,7 +364,7 @@ pyint64__init__impl__(PyInt64Object *self, PyObject *arg)
         {
             PyErr_Format(PyExc_ValueError, 
                 "The str value must be digit, not '%.200S'",
-                arg);
+                    arg);
             return -1;
         }
 
@@ -383,7 +402,7 @@ pyint64__init__impl__(PyInt64Object *self, PyObject *arg)
 static int
 pyint64__init__(PyInt64Object *self, PyObject *args, PyObject *kwds)
 {
-    const auto size = PyTuple_Size(args);
+    const Py_ssize_t size = PyTuple_Size(args);
     PyObject* arg1 = NULL;
 
     if (size > 1)
@@ -479,7 +498,7 @@ pyint64_div(PyObject *left, PyObject *right)
         return NULL;
     }
 
-    return PyInt64_FromInt64(a * b);
+    return PyInt64_FromInt64(a / b);
 }
 
 static PyObject*
@@ -553,60 +572,100 @@ pyint64_pow_impl(const int64_t src, const int64_t n)
 }
 
 static PyObject*
+pyint64_power_pylong(PyObject *v, PyObject *w, PyObject *x)
+{
+    PyObject* a;
+    PyObject* b;
+    PyObject* c;
+
+    if (PyLong_Check(v))
+    {
+
+    }
+    else
+    {
+        
+    }
+
+    if (PyLong_Check(w))
+    {
+
+    }
+    else
+    {
+        
+    }
+
+    if (PyLong_Check(x))
+    {
+
+    }
+    else
+    {
+        
+    }
+
+
+
+    Py_XDECREF(a);
+    Py_XDECREF(b);
+    Py_XDECREF(c);
+    return PyErr_NoMemory();
+}
+
+static PyObject*
 pyint64_power(PyObject *v, PyObject *w, PyObject *x)
 {
     int64_t a;
     int64_t b;
-    CONVERT_TO_INT64(v, a);
-    CONVERT_TO_INT64(w, b);
+    int64_t c;
 
-    // Two arguments.
-    if (!x)
+    const bool has_x = Py_IsNone(x);
+
+    if (PyLong_Check(v))
+    {
+        a = PyLong_AsLongLong(v);
+        if (a == -1 && PyErr_Occurred())
+        {
+            return NULL;
+        }
+    }
+    else
+    {
+        CONVERT_TO_INT64(v, a);
+    }
+
+    if (PyLong_Check(w))
+    {
+        b = PyLong_AsLongLong(w);
+        if (b == -1 && PyErr_Occurred())
+        {
+            return NULL;
+        }
+    }
+    else
+    {
+        CONVERT_TO_INT64(w, b);
+    }
+
+    if (!has_x)
     {
         return PyInt64_FromInt64(pyint64_pow_impl(a, b));
     }
-
-    PyObject* long_a = PyLong_FromLongLong(a);
-    if (!long_a)
+    else
     {
-        return PyErr_NoMemory();
+        if (PyLong_Check(v))
+        {
+            c = PyLong_AsLongLong(v);
+            if (c == -1 && PyErr_Occurred())
+            {
+                return NULL;
+            }
+        }
+
+        return PyInt64_FromInt64(pyint64_pow_impl(a, b) % c);
     }
 
-    PyObject* long_b = PyLong_FromLongLong(b);
-    if (!long_b)
-    {
-        Py_DECREF(long_a);
-        return PyErr_NoMemory();
-    }
-
-    int64_t c;
-    CONVERT_TO_INT64(x, c);
-
-    if (c == 0)
-    {
-        PyErr_SetString(PyExc_ValueError, "pow() 3rd argument cannot be 0");
-        return NULL;
-    }
-
-    PyObject* long_c = PyLong_FromLongLong(c);
-    if (!long_c)
-    {
-        Py_DECREF(long_a);
-        Py_DECREF(long_b);
-        return PyErr_NoMemory();
-    }
-
-    PyObject* result = PyNumber_Power(long_a, long_b, long_c);
-    Py_DECREF(long_a);
-    Py_DECREF(long_b);
-    Py_DECREF(long_c);
-
-    if (!result)
-    {
-        return PyErr_NoMemory();
-    }
-
-    return result;
 }
 
 static PyObject*
@@ -735,6 +794,116 @@ pyint64_float(PyObject *v)
     return PyFloat_FromDouble((double)PyInt64_GetValue(v));
 }
 
+static PyObject*
+pyint64_floor_divide(PyObject *left, PyObject *right)
+{
+    int64_t a;
+    int64_t b;
+    CONVERT_TO_INT64(left, a);
+    CONVERT_TO_INT64(right, b);
+
+    if (b == 0)
+    {
+        PyErr_SetString(PyExc_ZeroDivisionError, "Divide by zero.");
+        return NULL;
+    }
+
+    return PyInt64_FromInt64(a / b);
+}
+
+static PyObject*
+pyint64_true_divide(PyObject *left, PyObject *right)
+{
+    if (PyInt64_Check(left) && PyInt64_Check(right))
+    {
+        return pyint64_floor_divide(left, right);
+    }
+
+    if (PyInt64_Check(left))
+    {
+        int64_t a;
+        CONVERT_TO_INT64(left, a);
+        if (PyLong_Check(right))
+        {
+            PyObject* a_l = PyLong_FromLongLong(a);
+            if (!a_l)
+            {
+                return PyErr_NoMemory();
+            }
+
+            PyObject* result = PyNumber_TrueDivide(a_l, right);
+            if (!result)
+            {
+                Py_DecRef(a_l);
+                return PyErr_NoMemory();
+            }
+
+            Py_DecRef(a_l);
+            return result;
+        }
+        else if (PyFloat_Check(right))
+        {
+            PyObject* a_l = PyFloat_FromDouble((double)a);
+            if (!a_l)
+            {
+                return PyErr_NoMemory();
+            }
+
+            PyObject* result = PyNumber_TrueDivide(a_l, right);
+            if (!result)
+            {
+                Py_DecRef(a_l);
+                return PyErr_NoMemory();
+            }
+
+            Py_DecRef(a_l);
+            return result;
+        }
+        
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    int64_t b;
+    CONVERT_TO_INT64(left, b);
+    if (PyLong_Check(right))
+    {
+        PyObject* b_l = PyLong_FromLongLong(a);
+        if (!b_l)
+       {
+            return PyErr_NoMemory();
+       }
+       PyObject* result = PyNumber_TrueDivide(b_l, right);
+        if (!result)
+        {
+            Py_DecRef(b_l);
+            return PyErr_NoMemory();
+        }
+
+        Py_DecRef(b_l);
+        return result;
+    }
+    else if (PyFloat_Check(right))
+    {
+        PyObject* b_l = PyFloat_FromDouble((double)b);
+        if (!b_l)
+        {
+            return PyErr_NoMemory();
+        }
+
+        PyObject* result = PyNumber_TrueDivide(b_l, right);
+        if (!result)
+        {
+            Py_DecRef(b_l);
+            return PyErr_NoMemory();
+        }
+
+        Py_DecRef(b_l);
+        return result;
+    }
+
+    Py_RETURN_NOTIMPLEMENTED;
+}
+
 /* Pyint64 Number Methods End */
 
 PyObject*
@@ -757,7 +926,8 @@ pyint64_hash(PyInt64Object *v)
     unsigned char* first = (unsigned char*) &value;
     uint64_t offsetBit = 14695981039346656037ULL;
 
-    for (size_t index = 0; index < sizeof(int64_t); ++index) {
+    for (size_t index = 0; index < sizeof(int64_t); ++index) 
+    {
         offsetBit ^= (size_t)(first[index]);
         offsetBit *= (uint64_t)1099511628211;
     }

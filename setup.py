@@ -27,6 +27,7 @@ def main():
             author='GTerm',
             author_email='abc@abc.com',
             url='www.GTerm.com',
+            license='LICENSE',
             ext_modules=[
                 Extension('pyint64', get_sources(os.getcwd(), ('.cpp', '.c', '.cc', '.cxx')), get_includes())
             ]
